@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
+<title>HB Control Plane</title>
+<style>
+:root{--bg:#070d17;--panel:#0c1a2e;--panel2:#102240;--line:#1e3a5f;--text:#dcecf8;--muted:#6b8aaa;--cyan:#5dddee;--blue:#5da0ff;--green:#4dd898;--amber:#ffc969;--red:#ff7f96;--purple:#a88cef}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 20% -10%,#0f2a4a 0,transparent 50%),var(--bg);color:var(--text);font:14px/1.5,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+
+.shell{max-width:1200px;margin:auto;padding:20px}
+
+/* Header */
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.h1-area h1{font-size:clamp(20px,4vw,28px);margin:0 0 4px;font-weight:700;letter-spacing:-.02em}
+.eyebrow{color:var(--cyan);font:600 11px/1.2 ui-monospace,monospace;letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px}
+.muted{color:var(--muted);font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.chip{border:1px solid var(--line);border-radius:12px;padding:4px 9px;background:#0a1525;color:var(--muted);font-size:11px;display:inline-flex;align-items:center;gap:5px}
+.chip.good{color:var(--green);border-color:#226655}
+.chip.warn{color:var(--amber);border-color:#665533}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;justify-content:flex-start}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;border:0;background:none;color:var(--muted);padding:10px 12px;cursor:pointer;font-size:13px;white-space:nowrap;border-bottom:2px solid transparent;transition:all .15s}
+.tab.active{color:var(--text);border-color:var(--cyan)}
+.tab:hover:not(.active){color:var(--muted);background:#0d1a2e}
+
+/* Views */
+.view{display:none;padding:4px 0}
+.view.active{display:block}
+
+/* Cards & Grids */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 4px 20px #0002}
+.span6{grid-column:span 2}
+.metric{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:4px 0 6px}
+h2{font-size:15px;margin:0 0 10px;font-weight:600}
+h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px;font-weight:600}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #2a4a6a;font-weight:600}
+code{font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:#9ecbff;word-break:break-all}
+
+/* Status badges */
+.status{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:3px 8px;font-size:11px;border:1px solid var(--line);font-weight:500}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.ok .dot{background:var(--green);box-shadow:0 0 4px var(--green)}
+.bad .dot{background:var(--red)}
+.pending .dot{background:var(--amber);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Callout */
+.callout{border-left:3px solid var(--cyan);padding:10px 12px;background:#0a1528;border-radius:0 8px 8px 0;font-size:13px;line-height:1.5}
+
+/* Architecture grid */
+.archgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px}
+.archnode{border:1px solid var(--line);border-radius:10px;background:#0a1528;padding:12px;min-height:90px}
+.archnode.owner{border-color:var(--cyan)}
+.archnode.harness{border-color:var(--blue)}
+.archnode.graph-owner{border-color:var(--purple)}
+.archnode.observer-backend{border-color:var(--green)}
+.archnode .arch-title{font-size:12px;font-weight:600;margin-bottom:4px}
+.archnode .arch-desc{font-size:11px;color:var(--muted)}
+
+/* Execution events table */
+.event-list{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.event-row{display:grid;grid-template-columns:140px 100px 1fr 90px;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .1s}
+.event-row:hover{background:#0f2040}
+.event-row:last-child{border-bottom:none}
+.event-row .actor{color:var(--cyan);font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.event-row .name{color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.event-row .ts{color:var(--muted);font-size:11px;font-family:ui-monospace,monospace}
+.event-row .cost{text-align:right;font-size:11px;color:var(--muted)}
+
+/* Modal */
+.modal{position:fixed;inset:0;background:rgba(3,8,16,.85);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.modal.open{display:flex}
+.modal-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:700px;width:100%;max-height:85vh;overflow-y:auto;padding:20px;box-shadow:0 20px 60px #000a;position:relative}
+.modal-x{position:absolute;top:10px;right:12px;background:none;border:0;color:var(--muted);font-size:24px;cursor:pointer;line-height:1}
+.modal-x:hover{color:var(--text)}
+.modal h3{margin:0 0 12px;font-size:18px}
+.kv-grid{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;margin:10px 0;font-size:13px}
+.kv-grid b{color:var(--muted);font-weight:500}
+.modal pre{background:#060e1c;border:1px solid var(--line);border-radius:8px;padding:10px;font:11px/1.5 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;color:var(--text)}
+.bodylabel{color:var(--cyan);font:600 10px/1 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.1em;margin:12px 0 6px}
+
+/* Price tiers */
+.price-tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
+.price-tier{border:1px solid var(--line);border-radius:10px;background:#0a1528;padding:12px}
+.price-tier .tier-title{font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:6px}
+.price-tier .tier-model{font-size:13px;font-weight:500}
+.price-tier .tier-price{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* Rules */
+.rules-table{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+
+/* Session metrics */
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:10px}
+.metric-card{border:1px solid var(--line);border-radius:10px;background:#0a1528;padding:12px;text-align:center}
+.metric-card .metric-value{font-size:20px;font-weight:700;color:var(--cyan)}
+.metric-card .metric-label{font-size:11px;color:var(--muted);text-transform:uppercase;margin-top:2px}
+.metric-card.bad .metric-value{color:var(--red)}
+
+/* Scrollable areas */
+.scroll-area{max-height:400px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* Mobile-first adjustments */
+@media(max-width:700px){
+  .shell{padding:12px}
+  header{flex-direction:column;align-items:stretch}
+  .chips{justify-content:flex-start}
+  .grid{grid-template-columns:1fr}
+  .card,.span6{grid-column:span 1}
+  .event-row{grid-template-columns:120px 80px 1fr 70px;font-size:12px;padding:8px 10px}
+  .tab{padding:8px 10px;font-size:12px}
+  .kv-grid{grid-template-columns:120px 1fr}
+  .modal-card{padding:14px;border-radius:10px}
+  .price-tiers{grid-template-columns:1fr}
+  .metric-row{grid-template-columns:repeat(2,1fr)}
+  .archgrid{grid-template-columns:1fr 1fr}
+}
+
+@media(max-width:400px){
+  .archgrid{grid-template-columns:1fr}
+  .metric-row{grid-template-columns:1fr}
+  .tabs{gap:2px}
+  .tab{padding:6px 8px;font-size:11px}
+}
+
+footer{margin:20px 0 10px;color:var(--muted);font-size:11px;text-align:center;padding-top:12px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<main class="shell">
+
+<header>
+  <div class="h1-area">
+    <div class="eyebrow">Shadow Observer</div>
+    <h1>HB Control Plane</h1>
+    <div class="muted" id="stamp"></div>
+  </div>
+  <div class="chips" id="topchips"></div>
+</header>
+
+<div class="chips" style="justify-content:flex-end;margin:-6px 0 10px">
+  <span class="chip good" id="livechip">● connecting…</span>
+</div>
+
+<nav class="tabs">
+  <button class="tab active" data-view="overview">Overview</button>
+  <button class="tab" data-view="architecture">Architecture</button>
+  <button class="tab" data-view="agents">Agents & routes</button>
+  <button class="tab" data-view="models">Models</button>
+  <button class="tab" data-view="pricing">💰 Prices</button>
+  <button class="tab" data-view="tasks">Tasks & agents</button>
+  <button class="tab" data-view="sessions">Sessions</button>
+  <button class="tab" data-view="confidence">A-B test</button>
+  <button class="tab" data-view="rules">Rules</button>
+</nav>
+
+<!-- VIEW: Overview -->
+<div class="view active" id="view-overview">
+  <div class="grid" id="overviewgrid"></div>
+</div>
+
+<!-- VIEW: Architecture -->
+<div class="view" id="view-architecture">
+  <h2>System Architecture</h2>
+  <div class="archgrid" id="archnodes"></div>
+  <h2 style="margin-top:16px">Data Flow</h2>
+  <div class="edge-list" id="edges"></div>
+</div>
+
+<!-- VIEW: Agents & Routes -->
+<div class="view" id="view-agents">
+  <h2>Runtime Specification</h2>
+  <div id="agentinfo" class="callout" style="margin-bottom:14px"></div>
+  <div class="grid" style="margin-top:12px">
+    <div class="card span6"><h2>Agents</h2><div class="scroll-area"><table id="agenttable"></table></div></div>
+    <div class="card span6"><h2>Route Templates</h2><div class="scroll-area"><table id="routetable"></table></div></div>
+  </div>
+</div>
+
+<!-- VIEW: Models -->
+<div class="view" id="view-models">
+  <h2>Live Profiles</h2>
+  <table id="modeltable" style="margin-bottom:14px"></table>
+  <h2>Top-Tier Pricing (per 1M tokens)</h2>
+  <div id="modelpricing" class="callout"></div>
+</div>
+
+<!-- VIEW: Pricing -->
+<div class="view" id="view-pricing">
+  <h2>Inference Cost Scan</h2>
+  <div id="pricestatus" class="callout" style="margin-bottom:12px"></div>
+  <div class="price-tiers" id="pricetiers"></div>
+  <h2 style="margin-top:16px">Full Model List (Top 20 Paid)</h2>
+  <div class="scroll-area"><table id="pricetable"></table></div>
+  <h2 style="margin-top:16px">Historical Trend</h2>
+  <div class="scroll-area"><table id="pricehistory"></table></div>
+</div>
+
+<!-- VIEW: Tasks & Agents -->
+<div class="view" id="view-tasks">
+  <div class="toolbar" style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <h2 style="margin:0">Execution Events</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="chip" id="eventcount">0 events</span>
+      <button class="button" onclick="pollNow()" style="font-size:12px;padding:6px 10px">Refresh</button>
+    </div>
+  </div>
+  <div class="event-list scroll-area" id="events"></div>
+</div>
+
+<!-- VIEW: Sessions -->
+<div class="view" id="view-sessions">
+  <h2>Session Metrics</h2>
+  <div class="metric-row" id="sqltotals"></div>
+  <h2 style="margin-top:16px">Per-Model Breakdown</h2>
+  <div class="scroll-area"><table id="sqlmodels"></table></div>
+</div>
+
+<!-- VIEW: A-B Test -->
+<div class="view" id="view-confidence">
+  <h2>A-B Evaluation</h2>
+  <div id="abtests" class="scroll-area"></div>
+</div>
+
+<!-- VIEW: Rules -->
+<div class="view" id="view-rules">
+  <h2>Governance Rules</h2>
+  <div class="scroll-area rules-table"><table id="ruletable"></table></div>
+</div>
+
+<footer>
+  HB Control Plane · Shadow observer · Read-only point-in-time snapshot<br>
+  No execute controls · Human visibility required · Isolated runtime
+</footer>
+
+</main>
+
+<!-- Modal for event details -->
+<div class="modal" id="agentmodal">
+  <div class="modal-card">
+    <button class="modal-x" onclick="closeModal()">&times;</button>
+    <h3 id="modaltitle"></h3>
+    <div class="kv-grid" id="modalbody"></div>
+  </div>
+</div>
+
+<script id="snapshot" type="application/json"></script>
+
+<script>
+// ── Renderer: pulls snapshot from local JSON or inline ──
+(async () => {
+  let d;
+  try {
+    const r = await fetch('snapshot.json?_=' + Date.now());
+    if (r.ok) d = await r.json();
+  } catch(e) {}
+  // Fallback to inline
+  if (!d) {
+    try { d = JSON.parse(document.getElementById('snapshot').textContent); } catch(e) { d = null; }
+  }
+  if (!d) {
+    document.getElementById('livechip').className = 'chip warn';
+    document.getElementById('livechip').innerHTML = '● offline';
+    return;
+  }
+
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const badge = (label,state) => `<span class="status ${state}"><i class="dot"></i>${esc(label)}</span>`;
+  const money = x => isFinite(Number(x)) ? '$' + Number(x).toFixed(4) : '—';
+
+  window.__lastX = d;
+
+  // ── Render Overview ──
+  $('#stamp').textContent = `Snapshot ${new Date(d.generated_at).toLocaleString()} · ${d.git?.branch || '?'} @ ${String(d.git?.commit||'').slice(0,10)}`;
+  
+  const rt = d.components?.isolated_runtime || {};
+  const ps = rt?.process_security || {};
+  const hardened = rt?.stage1_read_only_enforced && rt?.sharing_disabled && ps?.non_root && ps?.capabilities_empty && ps?.no_new_privileges && ps?.environment_readable === true && (ps?.sensitive_environment_names || []).length === 0;
+  
+  $('#topchips').innerHTML = [
+    `<span class="chip ${hardened?'good':'warn'}">${hardened?'✓ Hardened read-only':'⚠ Not accepted'}</span>`,
+    `<span class="chip good">🔒 Isolated runtime</span>`,
+    `<span class="chip good">👁️ Human visible</span>`,
+    `<span class="chip ${d.git?.dirty?'warn':'good'}">${d.git?.dirty?'⚠ Modified':'✓ Clean'}</span>`
+  ].join('');
+
+  const profilesRows = (d.profiles || []).map(x => 
+    `<tr><td><strong>${esc(x.profile)}</strong></td><td><code>${esc(x.model)}</code></td><td>${esc(x.provider)}</td><td>${esc(x.reasoning)}</td><td>${badge(x.fallback_configured?'configured':'none',x.fallback_configured?'pending':'ok')}</td></tr>`
+  ).join('');
+
+  const leasesCount = (d.director?.leases || []).length;
+  const claimState = d.director?.claim_state || 'unknown';
+
+  $('#overviewgrid').innerHTML = `
+    <div class="card"><h3>Control Plane</h3><div class="metric">Hermes + Agent Director</div><div class="muted">Read-only shadow observer. No executing workers.</div></div>
+    <div class="card"><h3>Shadow Plans</h3><div class="metric">${leasesCount} leases</div><div class="muted">${esc(claimState)} · pending execution</div></div>
+    <div class="card"><h3>Local Inference</h3><div class="metric">${d.local_capacity_policy?.capacity_minimum ?? 0}–${d.local_capacity_policy?.capacity_maximum ?? 0} slots</div><div class="muted">Capacity reserved at execution start only.</div></div>
+    <div class="card span6"><h2>Provisional Direction</h2><div class="callout">${esc(d.human_summary?.routing_direction || 'Default routing via openrouter. DeepSeek failsafe active while upstream OAuth recovers.')}</div></div>
+    <div class="card span6"><h2>Current Profiles</h2><table><tr><th>Profile</th><th>Model</th><th>Provider</th><th>Reasoning</th><th>Fallback</th></tr>${profilesRows}</table></div>
+    <div class="card span12"><h2>What This Means</h2><div class="muted">${esc(d.human_summary?.execution_truth || 'This observer records state. It does not execute operations.')}. The candidate demonstrates selection, leases, permissions, budgets and gates.</div></div>
+  `;
+
+  // ── Render Architecture ──
+  if (d.architecture) {
+    const nodesHtml = (d.architecture.nodes || []).map(n => 
+      `<div class="archnode ${n.role||''}">
+        <div class="arch-title">${esc(n.label||n.id)}</div>
+        <div class="arch-desc">${esc(n.summary||n.description||'')}</div>
+      </div>`
+    ).join('');
+    $('#archnodes').innerHTML = nodesHtml;
+    
+    const edgesHtml = (d.architecture.edges || []).map(e => 
+      `<div class="edge" style="border-left:2px solid var(--cyan);padding:8px 10px;margin:6px 0;border-radius:6px;background:#0a1528;font-size:12px">
+        <strong>${esc(e.from)}</strong> → <strong>${esc(e.to)}</strong> · ${esc(e.description||e.type||'')}
+      </div>`
+    ).join('');
+    $('#edges').innerHTML = edgesHtml;
+  }
+
+  // ── Render Agents & Routes ──
+  const ars = d.agent_runtime_spec || {};
+  const ao = ars.shared_options || {};
+  const agents = ars.agents || {};
+  const routes = ars.routes || {};
+  const stages = ars.runtime_stages || {};
+
+  $('#agentinfo').innerHTML = `
+    <strong>ID:</strong> ${esc(ars.spec_id)} · <strong>Status:</strong> ${esc(ars.status)} · <strong>Purpose:</strong> ${esc(ars.purpose)}<br>
+    ${ao.authority ? `<strong>Authority:</strong> ${esc(ao.authority)}<br>` : ''}
+    ${ao.sharing_disabled ? '<strong>Sharing: disabled</strong>' : ''}
+  `;
+
+  const agentRows = Object.entries(agents).map(([name,a]) => 
+    `<tr><td><strong>${esc(name)}</strong><br><span class="muted">${esc(a.role||a.kind||'')}</span></td><td><code>${esc(a.pool||a.capability_pool||'—')}</code></td><td>${esc(a.model||a.default_model||'auto')}</td><td>${esc(a.topology||'direct')}</td><td>${esc(a.admission_gate||'standard')}</td></tr>`
+  ).join('');
+  $('#agenttable').innerHTML = '<tr><th>Agent</th><th>Pool</th><th>Model</th><th>Topology</th><th>Gate</th></tr>' + agentRows;
+
+  const routeRows = Object.entries(routes).map(([name,r]) => 
+    `<tr><td><strong>${esc(name)}</strong></td><td><code>${esc(r.template||'default')}</code></td><td>${esc(r.condition||r.trigger||'always')}</td><td>${esc(r.max_depth||'unbounded')}</td><td>${esc(r.timeout_ms||'—')}${r.timeout_ms?'ms':''}</td></tr>`
+  ).join('');
+  $('#routetable').innerHTML = '<tr><th>Route</th><th>Template</th><th>Condition</th><th>Max Depth</th><th>Timeout</th></tr>' + routeRows;
+
+  // ── Render Models ──
+  if (d.profiles) {
+    const mt = [];
+    d.models.forEach(m => {
+      if (m.tier === 'top-tier') {
+        mt.push(`<tr><td><code>${esc(m.id)}</code></td><td>${money(m.effective_pm)}</td><td>${esc(m.context)+'ctx'}</td><td>${esc(m.blended+' blended')}</td></tr>`);
+      }
+    });
+    $('#modeltable').innerHTML = '<tr><th>Profile</th><th>Model</th><th>Provider</th><th>Reasoning</th><th>Fallback</th></tr>' + 
+      (d.profiles.map(x => `<tr><td><strong>${esc(x.profile)}</strong></td><td><code>${esc(x.model)}</code></td><td>${esc(x.provider)}</td><td>${esc(x.reasoning)}</td><td>${badge(x.fallback_configured?'ok':'none',x.fallback_configured?'pending':'ok')}</td></tr>`).join('')) +
+      '<tr style="height:20px"><td colspan="5"></td></tr>' +
+      '<tr><th colspan="4" style="border:none;padding-top:16px">Top-Tier Pricing</th><th style="border:none;padding-top:16px"></th></tr>' + mt.join('');
+  }
+
+  // ── Render Pricing ──
+  const pr = d.pricing || {};
+  const srcErr = (pr.sources?.openrouter?.error) ? ` · Error: ${esc(pr.sources.openrouter.error)}` : '';
+  $('#pricestatus').innerHTML = `Scanned: ${esc(pr.scanned_at||'unknown')}${srcErr}`;
+
+  const t0 = pr.tiers || {};
+  const cheapest64k = (t0.cheapest_64k||[])[0];
+  const cheapest256k = (t0.cheapest_256k||[])[0];
+  const cheapest1m = (t0.cheapest_1m||[])[0];
+  const freeList = t0.free || [];
+
+  $('#pricetiers').innerHTML = `
+    ${cheapest64k ? `<div class="price-tier"><div class="tier-title">Cheapest ~64K context</div><div class="tier-model">${esc(cheapest64k.id)}</div><div class="tier-price">$${cheapest64k.effective.toFixed(4)} / 1M tokens</div></div>` : ''}
+    ${cheapest256k ? `<div class="price-tier"><div class="tier-title">Cheapest ~256K context</div><div class="tier-model">${esc(cheapest256k.id)}</div><div class="tier-price">$${cheapest256k.effective.toFixed(4)} / 1M tokens</div></div>` : ''}
+    ${cheapest1m ? `<div class="price-tier"><div class="tier-title">Cheapest ~1M context</div><div class="tier-model">${esc(cheapest1m.id)}</div><div class="tier-price">$${cheapest1m.effective.toFixed(4)} / 1M tokens</div></div>` : ''}
+    ${freeList.length ? `<div class="price-tier"><div class="tier-title">Free models</div><div class="tier-model">${freeList.slice(0,3).map(f=>esc(f.id)).join(', ')}</div><div class="tier-price">${freeList.length} free tiers available</div></div>` : ''}
+  `;
+
+  const paidModels = (pr.openrouter||[]).filter(m => m.effective_pm > 0).sort((a,b) => a.effective_pm - b.effective_pm).slice(0,20);
+  const payRows = paidModels.map(m => `<tr><td><code>${esc(m.id)}</code></td><td>${esc(m.context)+'ctx'}</td><td>${money(m.in_pm)}</td><td>${money(m.out_pm)}</td><td><strong>${money(m.effective_pm)}</strong></td></tr>`).join('');
+  $('#pricetable').innerHTML = '<tr><th>Model</th><th>Context</th><th>In/1M</th><th>Out/1M</th><th>Effective</th></tr>' + payRows;
+
+  const histRows = (pr.history||[]).map(h => `<tr><td>${esc(String(h.week||'').slice(0,10))}</td><td>${esc(h.gpt5_pro_eff||'—')}</td><td>${esc(h.claude_opus_eff||'—')}</td><td>${esc(h.deepseek_v4_eff||'—')}</td><td>${esc(h.median_eff||'—')}</td></tr>`).join('');
+  $('#pricehistory').innerHTML = '<tr><th>Week</th><th>GPT-5 Pro</th><th>Claude Opus</th><th>DeepSeek v4</th><th>Median</th></tr>' + histRows;
+
+  // ── Render Execution Events ──
+  const events = [...(d.execution_events || [])].reverse();
+  $('#eventcount').textContent = `${events.length} events`;
+  
+  const eventsHtml = events.map((e,i) => {
+    const ts = e.timestamp ? new Date(e.timestamp) : new Date();
+    const timeStr = ts.toLocaleTimeString();
+    const cost = e.cost_token_usd != null ? '$' + Number(e.cost_token_usd).toFixed(4) : '—';
+    const duration = e.duration_s ? e.duration_s.toFixed(1)+'s' : '';
+    return `<div class="event-row" data-idx="${i}" onclick="showEvent(${i})">
+      <div class="actor">${esc(e.actor||'?')}</div>
+      <div class="name" title="${esc(e.name||'')}">${esc(e.name||'?')}</div>
+      <div class="ts">${timeStr} ${duration}</div>
+      <div class="cost">${cost}</div>
+    </div>`;
+  }).join('');
+  
+  window.__lastEvents = events;
+  $('#events').innerHTML = eventsHtml || '<div style="padding:20px;text-align:center;color:var(--muted)">No events yet</div>';
+
+  // ── Render Sessions ──
+  const st = d.sessions || {};
+  const totals = st.totals || {};
+  $('#sqltotals').innerHTML = `
+    <div class="metric-card"><div class="metric-value">${totals.total_sessions ?? totals.count ?? '?'}</div><div class="metric-label">Sessions</div></div>
+    <div class="metric-card"><div class="metric-value">${totals.messages_sent ?? '—'}</div><div class="metric-label">Messages</div></div>
+    <div class="metric-card"><div class="metric-value">${totals.tokens_used ?? '—'}</div><div class="metric-label">Tokens</div></div>
+    <div class="metric-card"><div class="metric-value">${totals.cost_usd ?? '—'}</div><div class="metric-label">Cost ($)</div></div>
+  `;
+  
+  const perModel = st.per_model || {};
+  const mmRows = Object.entries(perModel).map(([m,v]) => 
+    `<tr><td><code>${esc(m)}</code></td><td>${v.completed ?? '?'}</td><td>${v.failed ?? '?'}</td><td>$${Number(v.cost_usd||0).toFixed(4)}</td><td>${v.tokens ?? '—'}</td></tr>`
+  ).join('');
+  $('#sqlmodels').innerHTML = '<tr><th>Model</th><th>Done</th><th>Failed</th><th>Cost</th><th>Tokens</th></tr>' + mmRows;
+
+  // ── Render A-B Test ──
+  const ab = d.ab_evaluation || {};
+  if (Object.keys(ab).length) {
+    const statusBadge = ab.status ? badge(ab.status.split('_').pop().replace(/_/g,' '), ab.status.includes('ready') || ab.status.includes('pass') ? 'ok' : 'pending') : '';
+    $('#abtests').innerHTML = `
+      <div style="margin-bottom:12px"><strong>Status:</strong> ${statusBadge}</div>
+      <div class="kv-grid">
+        <b>Lane A (portable shadow):</b> <span>${esc(ab.lane_a?.description||ab.lane_a?.focused_tests_passed||'—')}</span>
+        <b>Lane B (reference):</b> <span>${esc(ab.lane_b?.canonical_tests_passed||'—')}</span>
+        <b>Decision:</b> <span>${esc(ab.next_gate||ab.decision_audit||'pending')}</span>
+      </div>
+    `;
+  }
+
+  // ── Render Rules ──
+  const ruleRows = (d.rules || []).map(r => 
+    `<tr><td><strong>${esc(r.source||'—')}</strong></td><td>${esc(r.scope||'—')}</td><td><code>${esc(r.path||'—')}</code></td><td>${r.found ? badge('yes','ok') : badge('not found','bad')}</td></tr>`
+  ).join('');
+  $('#ruletable').innerHTML = '<tr><th>Source</th><th>Scope</th><th>Path</th><th>Found</th></tr>' + ruleRows;
+
+  // ── Tab switching ──
+  document.querySelectorAll('.tab').forEach(t => {
+    t.onclick = () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('view-' + t.dataset.view).classList.add('active');
+    };
+  });
+
+  // Initial chip
+  $('#livechip').className = 'chip good';
+  $('#livechip').innerHTML = '● live';
+
+})();
+
+// ── Poll for updates ──
+let pollInterval;
+function startPolling() {
+  pollInterval = setInterval(poll, 8000);
+}
+startPolling();
+
+async function poll() {
+  try {
+    const r = await fetch('snapshot.json?_=' + Date.now(), {cache:'no-store'});
+    if (r.ok) {
+      const x = await r.json();
+      if (window.__lastX) {
+        const nNew = (x.execution_events||[]).length - (window.__lastX.execution_events||[]).length;
+        if (nNew > 0) {
+          window.__lastX = x;
+          // Re-render events
+          const events = [...(x.execution_events||[])].reverse();
+          const eventsHtml = events.map((e,i) => {
+            const ts = e.timestamp ? new Date(e.timestamp) : new Date();
+            return `<div class="event-row" data-idx="${i}" onclick="showEvent(${i})">
+              <div class="actor">${esc(e.actor||'?')}</div>
+              <div class="name" title="${esc(e.name||'')}">${esc(e.name||'?')}</div>
+              <div class="ts">${ts.toLocaleTimeString()}</div>
+              <div class="cost">${e.cost_token_usd != null ? '$'+Number(e.cost_token_usd).toFixed(4) : '—'}</div>
+            </div>`;
+          }).join('');
+          $('#events').innerHTML = eventsHtml;
+          window.__lastEvents = events;
+          $('#eventcount').textContent = `${events.length} events`;
+          $('#livechip').innerHTML = `● ${nNew} new`;
+          setTimeout(() => { $('#livechip').innerHTML = '● live'; }, 3000);
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+function pollNow() {
+  poll();
+  clearInterval(pollInterval);
+  startPolling();
+}
+
+// ── Modal helpers ──
+function showEvent(idx) {
+  const e = window.__lastEvents?.[idx];
+  if (!e) return;
+  const modal = document.getElementById('agentmodal');
+  document.getElementById('modaltitle').textContent = `${e.actor || '?'} / ${e.name || '?'}`;
+  
+  const kvs = [
+    ['Actor', e.actor], ['Node', e.name], ['Role', e.role], ['Type', e.type],
+    ['Timestamp', e.timestamp ? new Date(e.timestamp).toLocaleString() : '—'],
+    ['Run ID', e.run_id || '—'], ['Duration', e.duration_s != null ? e.duration_s.toFixed(1)+'s' : '—'],
+    ['Tokens', e.tokens_used || '—'], ['Cost', e.cost_token_usd != null ? '$'+Number(e.cost_token_usd).toFixed(4) : '—'],
+    ['Model', e.model || '—']
+  ].map(([k,v]) => `<b>${k}:</b> <span>${esc(String(v??'—'))}</span>`).join('');
+  
+  document.getElementById('modalbody').innerHTML = kvs;
+  modal.classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('agentmodal').classList.remove('open');
+}
+
+document.getElementById('agentmodal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('agentmodal')) closeModal();
+});
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+</script>
+</body>
+</html>
